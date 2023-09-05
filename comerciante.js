@@ -58,61 +58,72 @@ router.post("/comerciantes/:id_comerciante/editar", async function (req, res) {
 
 router.post("/registar_compra", async function (req, res) {
     try {
-        let { participante, produto: id_produto, quantidade } = req.body;
-        let { id_evento } = req.params;
+        let {participante, produto: id_produto, quantidade} = req.body;
+        let {id_evento} = req.params;
 
-        if (!id_evento || !participante || !id_produto || !quantidade) {
-            return res.status(400).send("Requisição inválida: Preencha todos os parâmetros necessários");
-        }
-
-        // Verificar a existência do produto
-        const [verificaProduto] = await queryDB(
-            "SELECT * FROM produto_comerciante WHERE id = ?",
-            [id_produto]
-        );
-
-        if (!verificaProduto) {
-            return res.status(404).send("Produto não encontrado");
-        }
-
-        // Verificar a existência da conta_cashless
-        const [conta] = await queryDB(
+        // Validar se existe alguma conta_cashless do participante nesse evento;
+        let [conta] = await queryDB(
             "SELECT cc.id FROM participante p INNER JOIN conta_cashless cc ON p.id = cc.id WHERE cc.evento = ? AND p.email = ?",
             [id_evento, participante]
         );
 
         if (!conta) {
-            return res.status(404).send("Conta_cashless não encontrada.");
+            return res.status(404).send("A conta não existe. Insira uma conta válida");
         }
 
-        // Obter informações sobre o produto e saldo atual
-        const [produto] = await queryDB("SELECT valor FROM produto_comerciante WHERE id = ?", [id_produto]);
-        const [saldo] = await queryDB("SELECT valor_atual FROM conta_cashless WHERE id = ?", [conta.id]);
+        let [verificarProduto] = await queryDB(
+            "SELECT * FROM produto_comerciante WHERE id = ?",
+            [id_produto]
+        );
 
-        const valorCompra = produto.valor * quantidade;
+        if (!verificarProduto) {
+            return res.status(404).send("O produto indicado não foi encontrado.");
+        }
+
+
+        let [produto] = await queryDB("SELECT valor FROM produto_comerciante WHERE id = ?", [id_produto]);
+        let [saldo] = await queryDB("SELECT valor_atual FROM conta_cashless WHERE id = ?", [conta.id]);
+        // Calcular valor da compra que está a ser feita (considerar valor do produto e quantidade indicada)
+
+
+        let valorCompra = produto.valor * quantidade;
 
         if (valorCompra > saldo.valor_atual) {
-            return res.status(400).send("Erro ao efetuar a compra, saldo insuficiente");
+            return res.status(400).send("Saldo insuficiente.");
         }
 
-        const novoSaldo = saldo.valor_atual - valorCompra;
-        const data = Date.now();
+        let novoSaldo = saldo.valor_atual - valorCompra;
+        let data = Date.now();
 
         // Registar o movimento cashless do tipo "gasto"
-        const movimento = await queryDB("INSERT INTO movimento_cashless (tipo, conta, valor, saldo, data) VALUES (?, ?, ?, ?, ?)",
+        let movimento = await queryDB("INSERT INTO movimento_cashless (tipo, conta, valor, saldo, data) VALUES (?, ?, ?, ?, ?)",
             ["gasto", conta.id, valorCompra, novoSaldo, data]);
 
-        // Registrar o gasto cashless para o produto comprado e a quantidade
-
+        // Registar o gasto cashless para o produto comprado e a quantidade
         await queryDB("INSERT INTO gasto_cashless (movimento, produto, quantidade, valor_unitario) VALUES (?, ?, ?, ?)",
             [movimento.insertId, id_produto, quantidade, produto.valor]);
 
         // Atualizar o saldo atual na tabela conta_cashless
         await queryDB("UPDATE conta_cashless SET valor_atual = ? WHERE id = ?", [novoSaldo, conta.id]);
 
-        return res.status(200).json({ message: "Compra efetuada com sucesso" });
+
+       // sucesso de compra
+
+        const produtosComprados = [{
+            id_produto,
+            quantidade,
+            valor_unitario: produto.valor
+        }];
+
+        return res.status(200).json({
+            message: "Compra efetuada com sucesso",
+            produtosComprados
+        });
     } catch (error) {
-        errorHandler(error, res);
+        res.status(500).json({
+            message: "Ocorreu um erro ao registar sua compra. Tente novamente."
+        });
+        res.status(400).send(error.message);
     }
 });
 
@@ -121,7 +132,7 @@ router.get('/comerciantes/listar', async function (req, res) {
 
     try {
         // verificação de id_evento
-        const [eventoExiste] = await queryDB(
+        let [eventoExiste] = await queryDB(
             "SELECT id FROM evento WHERE id = ?",
             [req.params.id_evento]);
 
@@ -130,14 +141,15 @@ router.get('/comerciantes/listar', async function (req, res) {
         }
 
         // Verificação de comerciantes
-        const [comercianteExiste] = await queryDB("SELECT id FROM comerciante");
+        let [comercianteExiste] = await queryDB("SELECT id FROM comerciante");
 
         if (comercianteExiste.length === 0) {
             return res.status(400).json({error: "Não existem comerciantes para listar."});
         }
 
         // Se existirem evento e comerciantes, listar os comerciantes
-        const listaComerciantes = await queryDB("SELECT id as id_comerciante, evento as evento, designacao as nome_comerciante FROM comerciante");
+
+        let listaComerciantes = await queryDB("SELECT id as id_comerciante, evento as evento, designacao as nome_comerciante FROM comerciante");
 
         res.status(200).json(listaComerciantes);
     } catch (e) {
