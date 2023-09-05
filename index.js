@@ -12,8 +12,8 @@ app.use("/bilhete", require("./bilhete.js"));
 app.use("/participante", require("./participante.js"));
 app.use("/pagamento", require("./pagamento.js"));*/
 
-app.use("/produto", require("./produto.js"));
-app.use("/comerciante", require("./comerciante.js"));
+app.use("/cashless/:id_evento/comerciantes/:id_comerciante/produtos", require("./produto.js"));
+app.use("/cashless/:id_evento", require("./comerciante.js"));
 
 //app.use("/carregamento", require("./carregamento.js"));
 
